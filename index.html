@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Uran — a persistent Stalingrad campaign</title>
+<meta name="description" content="A persistent, historically-grounded IL-2 Sturmovik: Battle of Stalingrad co-op campaign. Fly real November 1942 missions, submit your log, watch the front line move.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='16' fill='%230d1117'/%3E%3Ctext x='50' y='68' font-size='60' text-anchor='middle' fill='%23e0b84f'%3E★%3C/text%3E%3C/svg%3E">
 <style>
   :root{
     --bg:#0d1117; --panel:#151b23; --panel2:#1c2531; --border:#2a3444;
@@ -61,6 +63,13 @@
   .pill.success{background:#1c3a2a; color:var(--good);}
   .pill.failure{background:#3a1c1c; color:var(--bad);}
   .pill.not_flown{background:#232b36; color:var(--muted);}
+  .downed-note{color:var(--accent); font-size:.78rem; margin-top:2px;}
+  ol.steps{margin:0; padding-left:1.3em; color:#c3ccd6; font-size:.92rem;}
+  ol.steps li{margin-bottom:10px;}
+  ol.steps li:last-child{margin-bottom:0;}
+  .mission-brief{color:#c3ccd6; font-size:.85rem; margin:6px 0 0; max-width:60ch;}
+  .mission-obj{color:var(--muted); font-size:.8rem; margin-top:3px;}
+  details.mission-detail summary{cursor:pointer; color:var(--accent); font-size:.8rem; margin-top:6px; user-select:none;}
   .mission-item{padding:12px 0; border-top:1px solid var(--border); display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;}
   .mission-item:first-child{border-top:none; padding-top:0;}
   .mission-item .m-name{font-weight:600;}
@@ -95,6 +104,27 @@
   <div id="app" style="display:none;">
 
     <section class="card">
+      <h2>How this works</h2>
+      <ol class="steps">
+        <li><strong>Download this turn's missions</strong> below. Each pack
+          has the mission file, its language files, and an
+          <code>INSTALL.txt</code> with exact setup steps.</li>
+        <li><strong>Fly co-op</strong> — cold start, two player slots per
+          mission, one each. AI can take the other slot if only one of you
+          is flying.</li>
+        <li><strong>Submit your log</strong> using the form at the bottom
+          of this page. IL-2 writes down exactly what happened — who took
+          off, who was shot down, whether the objective was met — and
+          that's the only thing the campaign trusts.</li>
+        <li><strong>The turn resolves</strong> once both of you have flown
+          and submitted: missions get graded, the front line moves (or
+          doesn't), a story chapter gets written, and next turn's missions
+          go up. This runs by hand, not on a timer — just say the word once
+          your logs are in.</li>
+      </ol>
+    </section>
+
+    <section class="card">
       <h2>Campaign status</h2>
       <div class="stat-row">
         <div class="stat"><div class="n" id="stat-turn">—</div><div class="l">Turn</div></div>
@@ -120,9 +150,12 @@
       <section class="card">
         <h2>Pilot roster</h2>
         <table>
-          <thead><tr><th>Pilot</th><th>Status</th><th>Kills</th><th>Sorties</th></tr></thead>
+          <thead><tr><th>Pilot</th><th>Status</th><th>Kills</th><th>Sorties</th><th>Downed</th></tr></thead>
           <tbody id="roster-body"></tbody>
         </table>
+        <div class="hint">"Downed" counts times shot down or crash-landed and
+          bailed out — no lasting penalty, just a rough day. Only a loss
+          with no bailout ends a pilot's career.</div>
       </section>
     </div>
 
@@ -135,9 +168,8 @@
       <h2>This turn's missions</h2>
       <div id="mission-list"></div>
       <div class="hint">
-        Download the mission pack, install per the instructions inside, and fly.
-        Cold start, co-op, two selectable slots per mission — see
-        <code>INSTALL.txt</code> in the pack.
+        Full setup steps are in each pack's <code>INSTALL.txt</code> — see
+        "How this works" above for the short version.
       </div>
     </section>
 
@@ -165,15 +197,15 @@
       <div class="hint" id="submit-hint">
         This opens a new GitHub issue in this repo with your log text
         attached, using your own GitHub login — nothing is uploaded to a
-        server. Review it and click "Submit new issue." The next weekly turn
-        resolution reads it from there.
+        server. Review it and click "Submit new issue." Turn resolution
+        runs by hand once both pilots' logs are in — no fixed schedule.
       </div>
     </section>
 
   </div>
 </main>
 
-<footer>Generated from <code>data/campaign_state.json</code> — never hand-edited, only written by the weekly turn-resolution engine.</footer>
+<footer>Generated from <code>data/campaign_state.json</code> — never hand-edited, only written by the turn-resolution engine, run by hand between sessions.</footer>
 
 <script>
 const REPO = { owner: "arinbb", name: "uran-campaign" };
@@ -247,6 +279,7 @@ function renderRoster(state){
       <td><span class="pill ${p.status}">${p.status}</span></td>
       <td>${p.kills}</td>
       <td>${p.missions_flown}</td>
+      <td>${p.times_downed || 0}</td>
     `;
     body.appendChild(tr);
   }
@@ -276,16 +309,29 @@ function renderMissions(state){
   shown.forEach(m => {
     const div = document.createElement("div");
     div.className = "mission-item";
+    div.style.flexDirection = "column";
+    div.style.alignItems = "stretch";
     const coalitionLabel = m.coalition === 1 ? "Soviet" : "Axis";
+    const b = m.briefing || {};
+    const name = b.name ? b.name.replace(/^\d+\s*-\s*/, "") : m.id.replace(/_/g," ");
     div.innerHTML = `
-      <div>
-        <div class="m-name">${m.id.replace(/_/g," ")}</div>
-        <div class="m-meta">${sectorLabel(m.sector)} · ${fmtDate(m.date)} · ${coalitionLabel}</div>
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
+        <div>
+          <div class="m-name">${name}</div>
+          <div class="m-meta">${sectorLabel(m.sector)} · ${fmtDate(m.date)} · ${coalitionLabel}</div>
+        </div>
+        <div>
+          <span class="pill ${m.result || m.status}">${m.result || m.status}</span>
+          <a class="btn" href="missions/${m.id}.zip">Download</a>
+        </div>
       </div>
-      <div>
-        <span class="pill ${m.result || m.status}">${m.result || m.status}</span>
-        <a class="btn" href="missions/${m.id}.zip">Download</a>
-      </div>
+      ${b.objective_short ? `<div class="mission-obj">Objective: ${b.objective_short}</div>` : ""}
+      ${b.briefing ? `
+        <details class="mission-detail">
+          <summary>Full briefing</summary>
+          <p class="mission-brief">${b.briefing}</p>
+          ${b.objective_detail ? `<p class="mission-brief">${b.objective_detail}</p>` : ""}
+        </details>` : ""}
     `;
     list.appendChild(div);
   });
