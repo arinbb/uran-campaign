@@ -16,6 +16,7 @@ import os
 
 from missions import mission_01, mission_02, mission_03, mission_04
 from build import write_mission_meta, OUT
+from briefings import briefing_for_mission, FIELDS
 
 MISSIONS = [mission_01, mission_02, mission_03, mission_04]
 
@@ -54,6 +55,35 @@ def main():
         assert needle in text, (
             f"{mission_id}: success_obj_id {meta['success_obj_id']} not "
             f"found as a real MCU_TR_MissionObjective in the .Mission file")
+
+        # Regression guard: any m.text() call made before add_success_
+        # objective()/briefing_icons() (e.g. a radio callout added earlier
+        # in a mission function than intended) silently shifts every LC
+        # index after it, and briefings.py reads those first 6 indices by
+        # fixed position -- a real bug this project already hit once (a
+        # first draft of the Falcon Flight callouts pushed the objective
+        # text to the wrong index without erroring anywhere else).
+        # Confirm every field briefings.py expects decoded, and check the
+        # exact expected strings the mission itself recorded in b.meta at
+        # the point it called add_success_objective()/briefing_icons() --
+        # not just "something non-empty landed here", which the shifted
+        # version would also have satisfied.
+        briefing = briefing_for_mission(OUT, mission_id)
+        missing = [f for f in FIELDS.values() if f not in briefing]
+        assert not missing, (
+            f"{mission_id}: briefing fields {missing} missing/empty -- an "
+            f"earlier m.text() call likely shifted the fixed LC indices")
+        for field, meta_key in (("objective_short", "_expected_objective_short"),
+                                ("objective_detail", "_expected_objective_detail"),
+                                ("target_name", "_expected_target_name")):
+            expected = b.meta.get(meta_key)
+            if expected is None:
+                continue
+            assert briefing[field] == expected, (
+                f"{mission_id}: decoded '{field}' ({briefing[field]!r}) does "
+                f"not match what add_success_objective/briefing_icons wrote "
+                f"({expected!r}) -- a stray m.text() call earlier in the "
+                f"mission has shifted the fixed LC indices")
 
     print()
     print(f"Wrote {len(MISSIONS)} missions + meta sidecars to {OUT}")

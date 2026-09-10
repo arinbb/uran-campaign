@@ -63,6 +63,48 @@ def climb_out(target_x, target_z, alt):
     return (cx, cz, alt, AREA_INITIAL_CLIMB)
 
 
+def add_pathfinder(b, *, plane_def, callsign, ingress, route, speed,
+                   object_script, target_xz, target_radius,
+                   rendezvous_text, approach_text, name="FALCON",
+                   launch_delay=90):
+    """
+    A friendly two-ship that air-starts right at the player's own
+    climb-out point and flies the rest of the player's own route, 300 m
+    higher -- something concrete to see and follow toward the target,
+    per Arin's "friendly squadron to show us the way" idea. It carries no
+    weapons task and does not touch scoring; it exists purely as a visual
+    and radio nav aid.
+
+    Two position-triggered radio callouts (add_radio_callout) narrate the
+    join-up at the climb-out point and the break-off near the target,
+    instead of firing on a fixed timer -- they fire off the PLAYER's own
+    position (object_script/country), so they trigger whether or not this
+    flight is exactly where you'd expect it.
+    """
+    hdg = bearing(HOME_X, HOME_Z, ingress[0], ingress[1])
+    guide_route = [(x, z, alt + 300.0, area) for (x, z, alt, area) in route[1:]]
+    guide = add_flight(
+        b, name=name, plane_def=plane_def, count=2, coop_slots=0,
+        country=COUNTRY_USSR, callsign=callsign,
+        ai_level=AI_VETERAN, wingman_ai=AI_NORMAL,
+        payload_id=0, wm_mask=1,
+        field=None, route=guide_route, cruise_speed=speed,
+        parked=False, air_start_pos=(ingress[0], ingress[1], hdg),
+        air_alt=ingress[2] + 300.0,
+        land_at_field=False, activate=True)
+    delay(b, guide["activate"], launch_delay)
+
+    add_radio_callout(
+        b, x=ingress[0], z=ingress[1], y=ingress[2], radius=4000,
+        country=COUNTRY_USSR, object_script=object_script,
+        text=rendezvous_text, name="%s Rendezvous" % name)
+    add_radio_callout(
+        b, x=target_xz[0], z=target_xz[1], y=200.0, radius=target_radius,
+        country=COUNTRY_USSR, object_script=object_script,
+        text=approach_text, name="%s Approach" % name)
+    return guide
+
+
 # =============================================================== MISSION 01
 
 def mission_01():
@@ -74,9 +116,12 @@ def mission_01():
         "II./St.G.2 is putting Stukas onto the Volga crossing at Rynok - the "
         "artery feeding 62nd Army in the factory district. 27 IAP is to be "
         "over Rynok at 2500 m and break up the attack before it reaches the "
-        "ferries. Escort is expected: a Rotte of Bf 109 F-4 from II./JG52 out "
-        "of Tuzov. Two paras. Cold start. Watch your throttle in this air - "
-        "it is minus eighteen on the deck.",
+        "ferries. Falcon Flight, another pair off the same ramp, will "
+        "already be up and turning for the crossing -- form up on them out "
+        "of the climb and they'll take you in. Escort is expected: a Rotte "
+        "of Bf 109 F-4 from II./JG52 out of Tuzov. Two paras. Cold start. "
+        "Watch your throttle in this air - it is minus eighteen on the "
+        "deck.",
         "19.11.1942", "8:40:0", -18,
         "winter\\02_Medium_06\\sky.ini", 600, 900, 1,
         300, 4, MP_FIGHTERS)
@@ -139,16 +184,33 @@ def mission_01():
     delay(b, stukas["activate"], 30)
     delay(b, escort["activate"], 30)
 
+    obj_name = "Break up the attack on Rynok"
+    obj_desc = ("Destroy at least three of the six Ju 87 D-3 before they "
+                "reach the crossing.")
     cnt = add_success_objective(
         b, x=tgt_x, z=tgt_z, y=1000.0, need=3,
-        name_lc=m.text("Break up the attack on Rynok"),
-        desc_lc=m.text("Destroy at least three of the six Ju 87 D-3 before "
-                       "they reach the crossing."))
+        name_lc=m.text(obj_name), desc_lc=m.text(obj_desc),
+        name_text=obj_name, desc_text=obj_desc)
     add_kill_corridor(b, from_xz=(tgt_x, tgt_z), to_xz=(sx, sz), y=1500.0,
                       object_script=P("ju87d3"), country=COUNTRY_GERMANY,
                       check_planes=True, target_mcu=cnt, name="Stuka Watch")
 
     briefing_icons(b, m, route, "Rynok crossing")
+
+    # --- Falcon Flight: a friendly pair already up and turning for Rynok,
+    # something to form up on and follow in (cosmetic nav aid, no scoring).
+    # Placed after every other m.text() call in this mission (objective +
+    # briefing_icons' route label) so it can't shift the fixed 0-5 LC
+    # indices briefings.py depends on for the site's mission cards.
+    add_pathfinder(
+        b, plane_def=LAGG3, callsign=CS_CANARY, ingress=ingress, route=route,
+        speed=330, object_script=P("lagg3s29"), target_xz=(tgt_x, tgt_z),
+        target_radius=6000,
+        rendezvous_text="Falcon Flight's up and turning for Rynok -- form "
+                        "up and follow us in.",
+        approach_text="Falcon Flight breaking off -- Stukas should be "
+                      "inbound any moment. Watch high for the escort.")
+
     b.finish(HOME_X, HOME_Y + 100.0, HOME_Z, 300)
     return m, "01_Frost_and_Smoke", b
 
@@ -162,11 +224,14 @@ def mission_02():
         "21 November 1942, 10:15. The pincers are closing. Sixth Army's "
         "rear-area units are streaming west along the Marinovka road toward "
         "the Don crossing at Kalach, and 8th Air Army wants that road cut "
-        "before dark. Each aircraft carries two FAB-50 under the wings. Make "
-        "one pass with the bombs, then work the column with guns - but be "
-        "quick about it: there is 2 cm flak on the halftracks, and a Rotte of "
-        "Bf 109 G-2 has been reported over the road most of the morning. "
-        "Bombs are on the release you use for rockets. Two paras. Cold start.",
+        "before dark. Falcon Flight is already up and turning for the road "
+        "-- form up on them out of the climb and they'll take you straight "
+        "to it. Each aircraft carries two FAB-50 under the wings. Make one "
+        "pass with the bombs, then work the column with guns - but be "
+        "quick about it: there is 2 cm flak on the halftracks, and a Rotte "
+        "of Bf 109 G-2 has been reported over the road most of the morning. "
+        "Bombs are on the release you use for rockets. Two paras. Cold "
+        "start.",
         "21.11.1942", "10:15:0", -14,
         "winter\\00_clear_00\\sky.ini", 2500, 200, 0,
         250, 3, MP_FIGHTERS)
@@ -233,11 +298,12 @@ def mission_02():
         land_at_field=False, activate=True)
     delay(b, cap["activate"], 20)
 
+    obj_name = "Cut the Marinovka road"
+    obj_desc = "Destroy at least five vehicles of the withdrawing column."
     cnt = add_success_objective(
         b, x=tgt_x, z=tgt_z, y=500.0, need=5,
-        name_lc=m.text("Cut the Marinovka road"),
-        desc_lc=m.text("Destroy at least five vehicles of the withdrawing "
-                       "column."))
+        name_lc=m.text(obj_name), desc_lc=m.text(obj_desc),
+        name_text=obj_name, desc_text=obj_desc)
     for vdef in (OPEL, SDKFZ251, HORCH):
         add_kill_corridor(b, from_xz=(tgt_x, tgt_z), to_xz=(dx, dz), y=200.0,
                           object_script=vdef[0], country=COUNTRY_GERMANY,
@@ -245,6 +311,20 @@ def mission_02():
                           name="Column Watch")
 
     briefing_icons(b, m, route, "Marinovka road")
+
+    # --- Falcon Flight: a friendly pair already up and turning for the
+    # road, something to form up on and follow in (cosmetic nav aid).
+    # Placed last so it can't shift the fixed 0-5 LC indices briefings.py
+    # depends on for the site's mission cards.
+    add_pathfinder(
+        b, plane_def=LAGG3, callsign=CS_CANARY, ingress=ingress, route=route,
+        speed=330, object_script=P("lagg3s29"), target_xz=(tgt_x, tgt_z),
+        target_radius=6000,
+        rendezvous_text="Falcon Flight's up and turning for the Marinovka "
+                        "road -- form up and follow us in.",
+        approach_text="Falcon Flight holding high -- the column's dead "
+                      "ahead. Mind the flak on the halftracks.")
+
     b.finish(HOME_X, HOME_Y + 100.0, HOME_Z, 300)
     return m, "02_Hammer_at_Marinovka", b
 
@@ -286,11 +366,12 @@ def mission_03():
     # done, so that report is wired straight to the objective counter, which
     # needs only one hit.  It has to exist before the flight that reports to
     # it, hence the ordering here.
+    obj_name = "Bring the Sturmoviks home"
+    obj_desc = "The Il-2 of 65th ShAP must complete their attack on Gumrak."
     cnt = add_success_objective(
         b, x=tgt_x, z=tgt_z, y=1000.0, need=1,
-        name_lc=m.text("Bring the Sturmoviks home"),
-        desc_lc=m.text("The Il-2 of 65th ShAP must complete their attack on "
-                       "Gumrak."))
+        name_lc=m.text(obj_name), desc_lc=m.text(obj_desc),
+        name_text=obj_name, desc_text=obj_desc)
     # Two independent ways to satisfy it, because the primary one leans on an
     # OnReport type that appears in no reference mission: either the Il-2
     # leader reports its area attack complete, or three of the vehicles it was
@@ -367,6 +448,24 @@ def mission_03():
     add_statics(b, park, COUNTRY_GERMANY)
 
     briefing_icons(b, m, route, "Gumrak")
+
+    # Hawk Flight already exists as the escort target -- give the briefed
+    # "form up over Pichuga, stay with them" instruction an actual in-game
+    # callout instead of leaving it as text-only flavor. Placed last so it
+    # can't shift the fixed 0-5 LC indices briefings.py depends on.
+    add_radio_callout(
+        b, x=ix, z=iz, y=900.0, radius=4000, country=COUNTRY_USSR,
+        object_script=P("yak1s69"),
+        text="Hawk Flight's formed up and turning for Gumrak -- tuck in "
+             "and stay with them.",
+        name="Hawk Rendezvous")
+    add_radio_callout(
+        b, x=tgt_x, z=tgt_z, y=200.0, radius=6000, country=COUNTRY_USSR,
+        object_script=P("yak1s69"),
+        text="Hawk Flight's turning onto the dispersals -- hold overhead "
+             "and let them work. Don't go chasing the 109s.",
+        name="Hawk Approach")
+
     b.finish(HOME_X, HOME_Y + 100.0, HOME_Z, 300)
     return m, "03_Sturmoviks", b
 
@@ -382,10 +481,12 @@ def mission_04():
         "in from the Don airfields to Pitomnik. Goering has promised three "
         "hundred tons a day. 8th Air Army intends that he does not deliver "
         "it. This is a free hunt: no bombers to shepherd, no ground target, "
-        "no schedule but the enemy's. A Kette of Ju 52 is inbound from the "
-        "west-south-west at about 1500 m with a pair of Bf 109 F-4 somewhere "
-        "above them. Find them before Pitomnik does. Yak-1. Two paras. "
-        "Cold start.",
+        "no schedule but the enemy's. Falcon Flight is already up and "
+        "pushing for the intercept box -- form up on them out of the climb "
+        "if you want a second set of eyes on the scope. A Kette of Ju 52 is "
+        "inbound from the west-south-west at about 1500 m with a pair of "
+        "Bf 109 F-4 somewhere above them. Find them before Pitomnik does. "
+        "Yak-1. Two paras. Cold start.",
         "25.11.1942", "13:00:0", -20,
         "winter\\00_clear_00\\sky.ini", 3000, 200, 0,
         290, 6, MP_FIGHTERS)
@@ -457,16 +558,31 @@ def mission_04():
                    "PITOMNIK FLAK %d" % (i + 1)))
     add_statics(b, ff, COUNTRY_GERMANY)
 
+    obj_name = "Break the airlift"
+    obj_desc = "Destroy at least three of the six Ju 52 before they reach Pitomnik."
     cnt = add_success_objective(
         b, x=ix, z=iz, y=1500.0, need=3,
-        name_lc=m.text("Break the airlift"),
-        desc_lc=m.text("Destroy at least three of the six Ju 52 before they "
-                       "reach Pitomnik."))
+        name_lc=m.text(obj_name), desc_lc=m.text(obj_desc),
+        name_text=obj_name, desc_text=obj_desc)
     add_kill_corridor(b, from_xz=(sx, sz), to_xz=(tgt_x, tgt_z), y=1500.0,
                       object_script=P("ju523mg4e"), country=COUNTRY_GERMANY,
                       check_planes=True, target_mcu=cnt,
                       name="Transport Watch")
 
     briefing_icons(b, m, route, "Transport track")
+
+    # --- Falcon Flight: a friendly pair already up and pushing for the
+    # intercept box, something to form up on and follow in (cosmetic nav
+    # aid). Placed last so it can't shift the fixed 0-5 LC indices
+    # briefings.py depends on for the site's mission cards.
+    add_pathfinder(
+        b, plane_def=YAK1, callsign=CS_CANARY, ingress=ingress, route=route,
+        speed=340, object_script=P("yak1s69"), target_xz=(ix, iz),
+        target_radius=6000,
+        rendezvous_text="Falcon Flight's up and pushing for the intercept "
+                        "box -- form up and follow us in.",
+        approach_text="Falcon Flight's got nothing on the scope yet. Hold "
+                      "this box -- Pelican's due from the west any time.")
+
     b.finish(HOME_X, HOME_Y + 100.0, HOME_Z, 300)
     return m, "04_The_Airlift", b

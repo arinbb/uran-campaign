@@ -460,8 +460,83 @@ def add_kill_corridor(b, *, from_xz, to_xz, y, object_script, country,
     return out
 
 
+def add_message_trigger(b, *, x, z, y, radius, country, object_script,
+                        target_mcu, name="Callout Zone"):
+    """
+    A ComplexTrigger that fires `target_mcu` the moment a living aircraft
+    matching `object_script`/`country` enters the zone -- OnObjectEnteredAlive,
+    event type 59. Event-type table confirmed from PylGBMiMec's
+    envent_definitions.py (event_name['MCU_TR_ComplexTrigger']), the same
+    source that OnObjectKilled=70 in add_kill_trigger above comes from.
+
+    This is how a scripted radio/subtitle message gets cued off the
+    player's actual position instead of elapsed time: point it at a spot
+    on the player's own route and target a subtitle() MCU.
+    """
+    m = b.m
+    idx = m.idx()
+    L = ["MCU_TR_ComplexTrigger", "{",
+         "  Index = %d;" % idx,
+         '  Name = "%s";' % name,
+         '  Desc = "";',
+         "  Targets = [];",
+         "  Objects = [];",
+         "  XPos = %s;" % f3(x),
+         "  YPos = %s;" % f3(y),
+         "  ZPos = %s;" % f3(z),
+         "  XOri = 0.00;",
+         "  YOri = 0.00;",
+         "  ZOri = 0.00;",
+         "  Enabled = 1;",
+         "  Cylinder = 1;",
+         "  Radius = %d;" % radius,
+         "  DamageThreshold = 1;",
+         "  DamageReport = 50;",
+         "  CheckVehicles = 0;",
+         "  CheckPlanes = 1;"]
+    for flt in ("Spawned", "EnteredSimple", "EnteredAlive", "LeftSimple",
+                "LeftAlive", "FinishedSimple", "FinishedAlive",
+                "StationaryAndAlive", "FinishedStationaryAndAlive",
+                "TookOff", "Damaged", "CriticallyDamaged", "Repaired",
+                "Killed", "DropedBombs", "FiredFlare", "FiredRockets",
+                "DroppedCargoContainers", "DeliveredCargo",
+                "ParatrooperJumped", "ParatrooperLandedAlive"):
+        L.append("  EventsFilter%s = %d;" % (flt, 1 if flt == "EnteredAlive" else 0))
+    L.append("  Country = %d;" % country)
+    L.append('  ObjectScript = "%s";' % object_script.lower())
+    L.append("  OnEvents")
+    L.append("  {")
+    L.append("    OnEvent")
+    L.append("    {")
+    L.append("      Type = 59;")
+    L.append("      TarId = %d;" % target_mcu)
+    L.append("    }")
+    L.append("  }")
+    L.append("}")
+    L.append("")
+    m._blocks.append("\n".join(L))
+    return idx
+
+
+def add_radio_callout(b, *, x, z, y, radius, country, object_script, text,
+                      duration=8, name="Callout"):
+    """
+    Convenience: register `text` as a subtitle and wire a position trigger
+    to it in one call. Returns the subtitle's own MCU index (harmless if
+    unused). See add_message_trigger for the zone/event semantics.
+    """
+    m = b.m
+    sub_idx = m.idx()
+    subtitle(m, sub_idx, x, y, z, m.text(text), duration, [COALITION_ALLIES])
+    add_message_trigger(b, x=x, z=z, y=y, radius=radius, country=country,
+                        object_script=object_script, target_mcu=sub_idx,
+                        name=name)
+    return sub_idx
+
+
 def add_success_objective(b, *, x, z, y, need, name_lc, desc_lc,
-                          coalition=COALITION_ALLIES, role="success"):
+                          coalition=COALITION_ALLIES, role="success",
+                          name_text=None, desc_text=None):
     """MCU_Counter(need) -> MCU_TR_MissionObjective(Success=1).
 
     `role` is "success" or "failure" — which side of the campaign result
@@ -472,6 +547,15 @@ def add_success_objective(b, *, x, z, y, need, name_lc, desc_lc,
     up. Recall from McuMissionObjective (PWCG): the in-game "Success" field
     on the node is a static label, not a live pass/fail bit — the campaign
     engine's actual signal is simply "did AType:8 fire for this OBJID".
+
+    `name_text`/`desc_text`: the same strings already passed to m.text()
+    for name_lc/desc_lc, kept here in plain form so make.py can assert the
+    decoded .eng briefing actually matches what THIS call wrote -- not
+    some other LC string that landed at the same index because a stray
+    m.text() call earlier in the mission shifted everything after it (a
+    real bug this project hit once: a radio callout's own m.text() calls,
+    made before this one, silently pushed the objective text off its
+    expected index).
     """
     m = b.m
     obj = m.idx()
@@ -485,6 +569,10 @@ def add_success_objective(b, *, x, z, y, need, name_lc, desc_lc,
     else:
         b.meta["success_obj_id"] = obj
     b.meta["objective_coalition"] = coalition
+    if name_text is not None:
+        b.meta["_expected_objective_short"] = name_text
+    if desc_text is not None:
+        b.meta["_expected_objective_detail"] = desc_text
     return cnt
 
 
@@ -547,6 +635,7 @@ def briefing_icons(b, m, route, label):
     pts = [(x, z, alt) for (x, z, alt, _) in route]
     lc = m.text(label)
     add_route_icons(b, pts, COALITION_ALLIES, (40, 120, 220), lc)
+    b.meta["_expected_target_name"] = label
 
 
 def af_pos(name):
