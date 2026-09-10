@@ -186,6 +186,12 @@
         <code>missionReport(&lt;timestamp&gt;)[N].txt</code> from the session
         you just flew.
       </p>
+      <p style="color:#c3ccd6; font-size:.92rem;">
+        No files there? Log writing is off by default in IL-2. Open
+        <code>&lt;game install&gt;\\Data\\Startup.cfg</code> and set
+        <code>mission_text_log = 1</code>, then fly the mission again — this
+        is a one-time fix, each pack's <code>INSTALL.txt</code> covers it too.
+      </p>
       <input type="file" id="log-files" multiple accept=".txt">
       <div>
         <label style="color:var(--muted); font-size:.8rem;">Preview / paste log text (auto-filled from the files above):</label>
