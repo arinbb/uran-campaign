@@ -29,6 +29,68 @@ the end of a career — only a kill with no bailout is.
 5. The site (`index.html`) is a static page that renders straight from
    that file. It is never hand-edited.
 
+## Installing and flying a mission
+
+Full step-by-step instructions ship inside every mission pack's
+`INSTALL.txt` (built fresh per-turn from the mission's own briefing), but
+here's the same information up front so it's checkable without downloading
+anything first.
+
+### 0. One-time setup: turn on mission logging
+
+The entire grading system depends on IL-2 writing a mission log file, and
+that's **off by default**. Before either of you flies a single Uran
+mission:
+
+1. Open `<IL-2 Sturmovik Great Battles install>\Data\Startup.cfg` in a text
+   editor.
+2. Find (or add) the line `mission_text_log = 1` and make sure it's set to
+   `1`. Save the file.
+
+If this isn't set, the mission will fly normally but no log will be
+written afterward — there will be nothing to submit, and no way to grade
+the sortie.
+
+### 1. Install the mission pack
+
+Download the current turn's `.zip` from `missions/` and unpack every file
+in it into your game's **cooperative** mission folder — not the
+single-player Missions folder:
+
+```
+<IL-2 Sturmovik Great Battles install>\data\Multiplayer\Cooperative\Uran\
+```
+
+(The `Uran` subfolder name doesn't matter, but keep the `.Mission` file
+together with its language files — they share a filename and the game
+reads both.)
+
+### 2. Host and join
+
+Launch IL-2 and open the Multiplayer → Coop screen. One pilot hosts
+(create/host a session) and browses to the `Uran` folder to select the
+mission file; the other joins that session from the server list, or by
+direct IP on a LAN. Exact menu labels can vary a little by game version —
+look for the cooperative multiplayer screen, not the single-player
+campaign browser, if the wording doesn't match exactly.
+
+Playing over the internet rather than a shared LAN? The host needs these
+ports forwarded to their machine: **TCP 28000, 28100** and **UDP 28000**.
+
+### 3. Fly, then submit your log
+
+Once you land (or don't), find your mission log:
+
+```
+Documents\1C SoftClub\il-2 sturmovik great battles\data\logs\
+```
+
+as one or more `missionReport(<timestamp>)[N].txt` files from the session
+you just flew. (If `Startup.cfg`'s `text_log_folder` setting has been
+changed, check there instead.) Use "Submit a result" on the site to attach
+it — that log is graded directly against what actually happened, so
+nobody has to self-report a win or a loss.
+
 ## Repo layout
 
 - `index.html` — the campaign site (front-line map, roster, story, missions, log submission)
